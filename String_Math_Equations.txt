@@ -1,0 +1,240 @@
+@name String Math Equations
+@inputs 
+@outputs Text_out:string Digits:string
+@persist 
+@trigger 
+
+#[ INFO
+You should not have a number directly next to parentheses
+    e.g. 1+2(2+2) will not return the expected result, do 1+2*(2+2)
+  
+
+]#
+
+function array string:find_parentheses()
+{
+    local First = This:find("(")
+    
+    if(First)
+    {
+        local Last = First
+        local Counter  = 1
+        while(Counter>0)  
+        {
+            Last++
+            local Char = This[Last]
+            if(Char == "(" )
+            {
+                Counter++
+            }
+            elseif(Char == ")" )
+            {
+                Counter--
+            }
+            if(Last>This:length())
+            {
+                return array()
+            }  
+        }    
+        return array(First,Last)
+    }
+    else
+    {
+        
+        return array()
+    }
+}
+function string evaluate(String:string)
+{
+    
+    local Digits= "0123456789.-()"
+    
+    #replace subtraction with +- (important for how calculations are done)
+    local S1 = String:find("-")
+    while(S1>0 & S1<=String:length())
+    {
+        if(Digits:find(String[S1-1]) & Digits:find(String[S1+1]))
+        {
+            String = String:sub(1,S1-1)+"+-"+String:sub(S1+1)
+        } 
+        S1 = String:find("-",S1+1)
+    }
+    
+    
+    #Find any parentheses and evaluate the expression inside
+    local Parentheses = String:find_parentheses()
+    while(Parentheses:count()>0) 
+    {
+        local New_value = evaluate(String:sub(Parentheses[1,number]+1,Parentheses[2,number]-1)) 
+        
+        String = String:sub(1,Parentheses[1,number]-1)+New_value+String:sub(Parentheses[2,number]+1)
+
+        Parentheses = String:find_parentheses()
+    }
+    
+    
+    local Exponent = String:find("^")
+    while(Exponent>0)
+    {
+        local Right = "" #right of the ^
+        local Left = "" #left of the ^
+        for(I=1,String:length()-Exponent)
+        {
+            local Char = String[Exponent+I]
+            if(Digits:find(Char)>0)
+            {
+                Right+=Char   
+            }
+            else
+            {
+                break
+            }
+        }
+        for(I=1,Exponent)
+        {
+            local Char = String[Exponent-I]
+            if(Digits:find(Char)>0)
+            {
+                Left=Char+Left    
+            }
+            else
+            {
+                break
+            }
+        }
+        if(Left!=""&Right!="")
+        {
+            New_value = Left:toNumber()^Right:toNumber()
+            String = String:sub(1,Exponent-Left:length()-1)+New_value+String:sub(Exponent+Right:length()+1)
+        }
+        else
+        {
+            error("invalid string")
+        }
+        Exponent = String:find("^")
+        
+    }
+    
+    local Mult = String:find("*")
+    local Div = String:find("/")
+    local Symbol = 0
+    if((Div<Mult & Div!=0) | (Mult==0 & Div>0))
+    {
+        
+        Symbol = Div
+    }
+    elseif((Mult<=Div & Mult!=0) | (Div==0 & Mult>0))
+    {
+        Symbol = Mult
+    }
+    
+    while(Symbol>0)
+    {
+        local Right = "" #right of the symbol
+        local Left = "" #left of the symbol
+        for(I=1,String:length()-Symbol)
+        {
+            local Char = String[Symbol+I]
+            if(Digits:find(Char)>0)
+            {
+                Right+=Char   
+            }
+            else
+            {
+                break
+            }
+        }
+        for(I=1,Symbol)
+        {
+            local Char = String[Symbol-I]
+            if(Digits:find(Char)>0)
+            {
+                Left=Char+Left   
+            }
+            else
+            {
+                break
+            }
+        }
+        if(Left!=""&Right!="")
+        {
+            if(String[Symbol]=="*")
+            {
+                New_value = Left:toNumber()*Right:toNumber()
+               
+            }
+            elseif(String[Symbol]=="/")
+            {
+                New_value = Left:toNumber()/Right:toNumber()
+            }
+            String = String:sub(1,Symbol-Left:length()-1)+New_value+String:sub(Symbol+Right:length()+1)
+        }
+        else
+        {
+            error("invalid string MD")
+        }
+        Mult = String:find("*")
+        Div = String:find("/")
+        Symbol = 0
+        if((Div<Mult & Div!=0) | (Mult==0 & Div>0))
+        {
+
+            Symbol = Div
+        }
+        elseif((Mult<=Div & Mult!=0) | (Div==0 & Mult>0))
+        {
+            Symbol = Mult
+            
+        }
+        
+        
+    }
+ 
+    local Add = String:find("+")
+    while(Add>0)
+    {
+        local Right = "" #right of the +
+        local Left = "" #left of the +
+        for(I=1,String:length()-Add)
+        {
+            local Char = String[Add+I]
+            if(Digits:find(Char)>0)
+            {
+                Right+=Char   
+            }
+            else
+            {
+                break
+            }
+        }
+        for(I=1,Add)
+        {
+
+            local Char = String[Add-I]
+            if(Digits:find(Char)>0)
+            {
+                Left=Char+Left    
+            }
+            else
+            {
+                break
+            }
+        }
+        if(Left!=""&Right!="")
+        {
+            New_value = Left:toNumber()+Right:toNumber()
+            String = String:sub(1,Add-Left:length()-1)+New_value+String:sub(Add+Right:length()+1)
+        }
+        else
+        {
+            error("invalid string A")
+        }
+        Add = String:find("+")
+    }
+    return String
+
+}
+
+
+Test_string = "1+2*(2+2)-2"
+print(evaluate(Test_string))
