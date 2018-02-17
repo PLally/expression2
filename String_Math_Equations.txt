@@ -4,6 +4,9 @@
 @persist 
 @trigger 
 
+#e2 by PCL (HMM')
+#http://steamcommunity.com/profiles/76561198115172591
+
 #[ INFO
 You should not have a number directly next to parentheses
     e.g. 1+2(2+2) will not return the expected result, do 1+2*(2+2)
