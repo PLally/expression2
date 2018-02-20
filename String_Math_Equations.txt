@@ -1,6 +1,5 @@
 @name String Math Equations
 @inputs 
-@outputs Text_out:string Digits:string
 @persist 
 @trigger 
 
