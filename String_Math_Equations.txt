@@ -51,7 +51,7 @@ function string evaluate(String:string)
 {
     
     local Digits= "0123456789.-()"
-    
+    String = String:replace(" ","")
     #replace subtraction with +- (important for how calculations are done)
     local S1 = String:find("-")
     while(S1>0 & S1<=String:length())
