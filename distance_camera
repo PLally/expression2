@@ -1,0 +1,186 @@
+@name Distance Camera BY PCL[HMM']
+@inputs [Digi_screen Ranger]:wirelink Capture
+@outputs 
+@persist Pixels:array Config:table Current_pixel Done Mode:string Pix_max Pix_min Gradient:array Inc
+
+#e2 by PCL (HMM')
+#http://steamcommunity.com/profiles/76561198115172591
+
+
+#[ Wiring instructions 
+Ranger -> high speed ranger
+Digi_screen -> digital screen
+capture -> button (the button starts the camera)
+]#
+
+
+if(first() | dupefinished())
+{
+    # Edit the config if you want 
+    Config = table("min" = 100,  # minimum distance the cam will display
+                   "max" = 50000,  # max distance
+                   "res" = 256,  # resolution of the digital screen
+                   "use_gradient" = 1,  # if 1 a gradient between 2 colors is used, if 0 a gradient between black and white is used
+                   "gradient_start" = vec(165, 114, 114),  # color used for things closest to the camera
+                   "gradient_end" = vec(65, 238, 244),  # color used for things farthest from camera
+                   "gradient_detail" = 360,  # the amount colors in the gradient (trying to set it to something high such as 2000 isnt really usefull )
+                   "gradient_inverse" = 0)  # if 1 the gradient will be flipped (basically flipping start and end / black and white)
+                    
+                    # dont use gradient_inverse with custom gradient (use_gradient=1)
+
+    Inc = 1 
+    
+    
+    if(Digi_screen[1048572] != Config["res",number] | Digi_screen[1048573] != Config["res",number])
+    {
+        print(format("WARNING: Digital screen WidthxHeight should be %dx%d",Config["res",number],Config["res",number]))
+    }
+
+
+    #[
+        Ranger[2] = 100000
+        Gradient = array()
+        Pix_min = 5000000
+        Pix_max = 0
+        Current_pixel = 1
+        Mode = "gradient_gen"
+        runOnTick(1)
+    ]#
+        
+}
+elseif(~Digi_screen)
+{
+    if(Digi_screen[1048572] != Config["res",number] | Digi_screen[1048573] != Config["res",number])
+    {
+        print(format("WARNING: Digital screen WidthxHeight should be %dx%d",Config["res",number],Config["res",number]))
+    }
+}
+elseif(tickClk())
+{
+    local Min = Config["min", number]
+    local Max = Config["max", number]
+    local Res = Config["res", number]
+    local Mult = 2/Res
+    
+    if(Mode == "capture")
+    {
+
+        while(perf(85))
+        {
+            local X = Current_pixel%Res
+            local Y = ceil(Current_pixel/Res)
+            Ranger[4] = -1+(X*Mult)
+            Ranger[5] = -1+(Y*Mult)
+            Ranger[0] =1
+            
+            P = max(min(Ranger[1],Max),Min)
+            
+            Pixels:pushNumber(P)
+            #Pixels:pushNumber(Ranger[1])
+            if(Ranger[1]>Pix_max)
+            {
+                Pix_max = Ranger[1]
+            }
+            if(Ranger[1]<Pix_min)
+            {
+                Pix_min = Ranger[1]
+            }
+            Current_pixel++
+           
+            if(Current_pixel == Res^2)
+            {
+                print("Image Taken. Displaying Image")
+                Digi_screen[1048569] = 2
+                Digi_screen[1048574] = 1
+                
+
+                Mode = "display"  
+                Current_pixel = 0
+                break
+            }
+        }
+    }
+    elseif(Mode == "gradient_gen")
+    {
+        if(!Config["use_gradient", number])
+        {
+            Mode = "capture"
+        }
+        else
+        {
+            local Start =Config["gradient_start",vector]
+            local End = Config["gradient_end",vector]
+            local N = Config["gradient_detail",number]
+    
+            if(Gradient:count()<1)
+            {
+                Gradient = array(Start)
+            }
+                
+            while(perf(80))
+            {
+                Curr = vec( round(Start:x() + (Inc/(N))*(End:x()-Start:x())),
+                            round(Start:y() + (Inc/(N))*(End:y()-Start:y())),
+                            round(Start:z() + (Inc/(N))*(End:z()-Start:z())))
+                Gradient:pushVector(Curr)
+                Inc++
+                
+                if(Inc>=N)
+                {
+    
+                    Mode = "capture"
+                    Inc = 1
+                    break
+                }
+            }
+        }
+
+    } 
+    elseif(Mode == "display")
+    {
+        local Inverse = Config["gradient_inverse", number]
+        local N = 255
+        if(Gradient:count()>1)
+        {
+            N = Gradient:count()-1
+        }
+        local Pix_accuracy = (Pix_max-Pix_min)/N
+        while(perf(50))
+        {
+
+            local C = round((Pixels:shiftNumber()-Pix_min)/Pix_accuracy)
+            
+            if(Inverse)
+            {
+                C = N-C
+            }
+            
+            local V = vec(C)
+            if(Gradient:count()>1)
+            {
+                V = Gradient[C+1,vector]
+            }
+
+            Digi_screen[Current_pixel] = rgb2digi(V,2)
+            Current_pixel++
+            if(Pixels:count()<1)
+            {
+                Mode = "done"
+                break
+            }   
+        }
+        
+    }
+}
+elseif(~Capture & Capture==1)
+{
+    Ranger[2] = 100000
+    Gradient = array()
+    Pixels = array()
+    Pix_min = 500000
+    Pix_max = 0
+    Current_pixel = 1
+    Mode = "gradient_gen"
+    runOnTick(1)
+
+}
