@@ -1,15 +1,15 @@
 @name Random Maze Generator by PCL ('HMM)
 @persist Cell_stack:table Cells:table H_index Task:string X_I Y_I Grid_size Cell_size
-@persist PB_X PB_Y PB_current_dir Interval MProp:entity
+@persist PB_X PB_Y PB_current_dir Interval MProp:entity PSpawn_interval
 
 #e2 by PCL (HMM')
 #http://steamcommunity.com/profiles/76561198115172591
 if(first())
 {
     
-    Grid_size =20 # size of maze
+    Grid_size =17 # size of maze
     Interval = 10 # interval for maze generation
-    PSpawn_interval = 700# interval for spawning props 
+    PSpawn_interval = 1000# interval for spawning props 
     
     #probably shouldnt change anything past here
     
@@ -18,7 +18,7 @@ if(first())
     Cells = table()
     Cell_size = 140 #140
     #MProp = propSpawn("models/hunter/blocks/cube025x025x025.mdl",entity():pos(),1)
-    #uses recursive backtrack methody
+    #uses recursive backtrack method or depth first search tbh idk even know what its called
     #3x6 plates
     function void holo_line(Index:number,Start:vector,End:vector)
     {
@@ -37,7 +37,6 @@ if(first())
         {
             if(This[I,vector2]==V2)
             {
-                #print(_HUD_PRINTCONSOLE,This[I,vector2]:toString()+" "+V2:toString())
                 This:remove(I)
                 
                 return This
@@ -57,7 +56,6 @@ if(first())
             return ang(0,0,0)
         } elseif(V2==vec2(1,0)) {
             return ang(0,90,0)
-            print(1)
         } elseif(V2==vec2(-1,0)) {
             return ang(0,90,0)
         }
@@ -102,7 +100,6 @@ if(first())
     function vector2 create_path(Size:number, X,Y)
     {
         Cells[Size*(Y-1)+X,table]["visited",number] = 1
-        #holoColor(Size*(Y-1)+X,vec(140,140,255))
         Directions = array(vec2(0,1),vec2(0,-1),vec2(1,0),vec2(-1,0))
         local Inverse = array(2,1,4,3)
         while(Directions:count()>0)
@@ -136,18 +133,12 @@ if(first())
         {
             if(Cells[Grid_size*(Y+D:y()-1)+X+D:x(),table]["visited",number]!=2 | Y+D:y()>Grid_size | X+D:x()>Grid_size | Y+D:y()<1 | X+D:x()<1)
             {
-                #holoCreate(H_index)
-                #holoScaleUnits(H_index,vec(Cell_size+5,5,Cell_size/2))
-                #holoColor(H_index,vec(0,0,0))
-                #holoAng(H_index,wall_angle(D))
-                #holoPos(H_index,vec(X*Cell_size,Y*Cell_size,10)+entity():pos()+vec(D:x(),D:y(),0)*Cell_size/2)
                 if(!propCanCreate())
                 {
                     print("interval to fast to spawn props Increase PSpawn_interval and replace e2")
                 }
-                P = propSpawn("models/hunter/plates/plate3x16.mdl",vec(X*Cell_size,Y*Cell_size,40)+entity():pos()+vec(D:x(),D:y(),0)*Cell_size/2+vec(0,0,175),wall_angle(D)+ang(0,0,90),1)
+                P = propSpawn("models/hunter/plates/plate3x16.mdl",vec(X*Cell_size,Y*Cell_size,100)+entity():pos()+vec(D:x(),D:y(),0)*Cell_size/2+vec(0,0,175),wall_angle(D)+ang(0,0,90),1)
                 P:setMaterial("models/props_canal/metalwall005b")
-                #P:parentTo(MProp)
             }
             
         }
@@ -158,8 +149,6 @@ if(first())
     Cells = table()
     X_I = 1
     Y_I = 1
-    Grid_size =20
-    Interval = 10
 
 }
 
@@ -243,7 +232,7 @@ elseif(Task=="create_walls")
         {
             if(PB_X<=Grid_size)
             {
-                #print(Cells[Grid_size*(PB_Y-1)+PB_X,table]["walls",array])
+
                 while(Cells[Grid_size*(PB_Y-1)+PB_X,table]["walls",array]:count()>0)
                 {
         
