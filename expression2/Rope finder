@@ -1,0 +1,100 @@
+@name Ropes V1
+@inputs 
+@outputs 
+@persist Task:string RopesToShow:array Incrementer On
+@trigger 
+
+#e2 by PCL (HMM')
+#http://steamcommunity.com/profiles/76561198115172591
+
+
+#[ HELP
+    Commands:
+       /showropeid <steamid32> (highlights ropes belonging to the player with that steamid)
+       /showrope <name>        (highlights ropes belonging to the player with that name)
+    
+    Other:
+       Clicking Mouse1 while holding Gravity Gun prints closest rope to your aim position
+        
+]#
+
+if(first()) { 
+    runOnKeys(owner(),1)
+    runOnChat(1)
+    runOnTick(1)
+    Task = ""
+    hint("type /help or read the help comment in e2", 10)
+} elseif(keyClk(owner())) {
+    if(owner():keyAttack1()&owner():weapon():type()=="weapon_physcannon") {
+        if(findCanQuery()) {
+            findByClass("keyframe_rope")
+            findSortByDistance(owner():aimPos())
+            local Rope = findResult(1)
+            printColor(vec(255, 153, 63), "closest rope found belongs to "+Rope:owner():name()+" "+Rope:owner():steamID())
+               
+        }  
+    }
+} elseif(chatClk(owner())) {
+    local Exp = owner():lastSaid():explode(" ")
+    local Cmd = Exp:string(1):lower()
+    Exp:remove(1)
+    local Args = Exp:concat(" ")
+    switch(Cmd) {
+        case "/showrope",
+            if(!findCanQuery()) {
+                printColor(vec(255, 153, 63), "Try again in a few seconds")
+            } else {
+                hideChat(1)
+                local P = findPlayerByName(Args)
+                printColor(vec(255, 153, 63), "highlighting ropes belonging to "+P:name() +" "+P:steamID() )
+                Task = "show"
+                Incrementer = 1
+                findByClass("keyframe_rope")
+                findClipToPlayerProps(P)
+                RopesToShow = findToArray()
+            }
+        break
+        case "/showropeid",
+            if(!findCanQuery()) {
+                printColor(vec(255, 153, 63), "Try again in a few seconds")
+            } else { 
+                hideChat(1)
+                local P = findPlayerBySteamID(Args)
+                printColor(vec(255, 153, 63), "highlighting ropes belonging to "+P:name() +" "+P:steamID() )
+                Task = "show"
+                Incrementer = 1
+                findByClass("keyframe_rope")
+                findClipToPlayerProps(P)
+                RopesToShow = findToArray()
+            }
+        break
+        case "/help",
+            hideChat(1)
+            print("COMMANDS\n    /showropeid <steamid32>\n   /showrope <name>\nPlease read e2 for more help")
+        break
+    }
+} elseif(tickClk()) {
+    switch(Task) {
+        case "show",
+            while(perf()) {
+                if(RopesToShow:count() <1) {
+                    Task = ""
+                    Incrementer = 1
+                    break   
+                }
+                local R = RopesToShow:popEntity()   
+                holoCreate(Incrementer, R:pos())
+                holoVisible(Incrementer, players(), 0)
+                holoVisible(Incrementer, owner(), 1)
+                holoMaterial(Incrementer, "hlmv/debugmrmwireframe")
+                holoModel(Incrementer, "hq_icosphere")
+                holoScale(Incrementer, vec(6))
+                holoColor(Incrementer, vec(255,0,0))
+                Incrementer++
+            }
+        
+        break
+    }
+        
+}   
+
