@@ -1,0 +1,255 @@
+@name Screen V3
+@inputs Screen:wirelink Url:string
+@persist Workers:table Task:string Role:string
+@persist [API_KEY BASE_URL GID]:string SIZE SPEED AUTO_WIRE
+@persist CurPixel:number ImgData:string Width Height MyID PixelAmount ScreenHeight ScreenWidth
+@persist Initialized
+@persist [RED GREEN BLUE]:vector
+# e2 by PCL (HMM')
+# http://steamcommunity.com/profiles/76561198115172591
+
+#[ HELP
+
+How to set up
+    simply place this e2 1-4 times( or more but not recomended on most servers ) 
+    and wire them all to the same digital screen.
+    the first e2 wired will usually be the "master" e2 
+    meaning it recieves commands and actually request the image data from the api
+    
+    the Url input is just an alternative to chat commands
+
+
+    see config on line 60 to change size and speed 
+    
+COMMANDS
+    all commands can have an optinonal screen specifier e.g.
+    
+    /url:2311 https://example.com/test.png will draw the png on screen 2311
+    a screens id is first printed when the master chip is registered
+    "841: no other e2s found, assuming self is master of screen 364" ( in this example the screen id is 364 )
+    
+ACTUAL COMMANDS
+    /url <url> draws a url
+    
+    there used to be more commands but i got rid of them
+
+About the api
+    
+    URL AND PARAMETERS
+    /imgtxt takes parameters 
+    width  (width and height must be the same currently)
+    height (width and height must be the same currently)
+    url
+    key    your a api key 
+    
+    DATA RETURNED
+    
+    data from the api is just a long series of base 36 numbers
+    the first character will always be "t" on a successful request
+    
+    the next 3 characters are a base 36 number representing the width of the image (after resizing)
+    
+    the next 3 characters are height
+    
+    the rest of the string is a series of base 36 numbers each exactly 5 characters representing 
+    the color of each pixel ordered left to right top to bottom
+    so the first number is the top left pixel of the image and the last number is the bottom right
+    
+    
+]#
+if(first() | dupefinished()) {
+   
+    
+    #[ CONFIG ]## 
+    API_KEY = "none"
+    BASE_URL = ""
+    SIZE = 512    # expected size of the digital screen e.g. 512x512
+    SPEED = 100   # number 10 - 100
+    #[ END CONFIG ]#
+
+    
+    RED = vec(255, 0, 0)
+    GREEN = vec(0,255,0)
+    BLUE =vec(0,0,255)
+    
+    
+    Task="none"
+    #ifdef string:startsWith(string)
+        # do nothing because startsWith is  already defined
+    #else
+        function string:startsWith(S:string) {
+             return This:sub(1,S:length())==S    
+        }
+    #endif
+    
+    function getImage(URL:string) {
+        httpRequest(format("%s?url=%s&width=%s&height=%s&key=%s", BASE_URL,httpUrlEncode(URL), SIZE, SIZE ,API_KEY))
+
+    }
+    
+    function init() {
+        GID = Screen:entity():id():toString(36)
+        dsJoinGroup("digital_screen_image_"+GID)
+        dsSetScope(0)
+        if(dsProbe("digital_screen_image_"+GID,0):count() < 1) {
+            Role = "master"   
+            printColor(GREEN, format("%s: no other e2s found, assuming self is master of screen %s", entity():id(), Screen:entity():id()))
+            setName("Screen V3 (Master)")
+        } else {
+            setName("Screen V3 (Worker)")
+            Role ="worker"
+            dsSend("register", "digital_screen_image_"+GID, 0, entity():id():toString()) 
+        }
+        Task = "register"   
+        runOnTick(1)
+        runOnHTTP(1)
+        runOnChat(1)
+        runOnLast(1)   
+        
+    }
+    
+    function startDraw(T:table) {
+        ImgData = T["data", string]
+        Width = ImgData:sub(2,4):toNumber(36)
+        Height = ImgData:sub(5,7):toNumber(36)
+        MyID = T["workers", table][entity():id():toString(), number]
+        PixelAmount = ceil((ImgData:length()-7)/5/T["workers", table]:count())
+        CurPixel = PixelAmount*MyID
+        Task = "draw"
+        ScreenWidth = Screen[1048573]
+        ScreenHeight = Screen[1048572]
+           
+    }
+    if(Screen:entity():isValid() & !Initialized) {
+        Initialized = 1
+        init()
+    } else {
+        printColor(BLUE, "please wire this e2 to a digital screen")
+    }
+    Workers[entity():id():toString(), number] = 1
+    
+} elseif(~Url & Url != "") {
+    
+    getImage(Url)
+}elseif(~Screen) {
+    if(Screen:entity():isValid() & !Initialized) {    
+        Initialized = 1
+        init()
+    }
+
+}elseif(dsClk()) {
+    switch(dsClkName()) {
+        case "register",
+            Workers[dsGetSender():id():toString(), number] = 1
+            if(Role=="master") {
+                printColor(GREEN, format("master %s: new worker registered worker %s", entity():id(), dsGetSender():id()))
+            }
+        
+        break   
+        case "img_data",
+            local T = dsGetTable() 
+           
+            startDraw(T)
+            
+        break
+        case "remove_worker",
+            local K = dsGetString()
+            Workers:remove(K)
+            if(Role=="master") {
+                
+                printColor(GREEN, "master "+entity():id()+": worker "+K+" removed")
+                printTable(Workers)
+            }
+        
+        break
+    }
+
+
+} elseif(httpClk() & Role=="master") {
+    local Data = httpData()
+    
+    if(Data[1] != "t") {
+        printColor(RED, "Request invalid")
+        print(Data)
+    } else {
+        local T = table()
+        T["data", string] = Data
+        T["workers", table] = table()
+        
+        
+        foreach(K:string, V:number=Workers) { 
+            if(entity(K:toNumber()):isValid() & entity(K:toNumber()):owner()==owner()) {
+                T["workers", table][K , number] = -1
+ 
+            } else {
+                Workers:remove(K)
+                printColor(GREEN, "master "+entity():id()+": worker "+K+" removed")
+                dsSend("remove_worker", "digital_screen_image_"+GID, 0, K) 
+            
+            }    
+            
+            
+        }
+        
+        I= 0
+        
+        foreach(K:string,V:number=Workers) {
+          
+            T["workers", table][K, number] = I
+            I++  
+            
+        }
+        startDraw(T)
+        dsSend("img_data", "digital_screen_image_"+GID, 0, T)
+        
+        Screen[1048569] = 2
+        Screen[1048574] = 1
+     
+
+    }
+    
+} elseif(tickClk()&Task=="draw") {
+    while(perf(SPEED)) {
+        if(CurPixel>PixelAmount*(MyID+1)) {
+ 
+            Task = "wait"
+            break    
+        }
+        local X = CurPixel%Width
+        local Y = ceil(CurPixel/Width)-1
+        local P = ImgData:sub(CurPixel*5+8,CurPixel*5+12):toNumber(36)     
+        Screen[ScreenWidth*Y+X] =P    
+        CurPixel++
+    }
+        
+    
+} elseif(chatClk(owner()) & Role=="master") {
+    local Exp = owner():lastSaid():explode(" ")
+    local Cmd = Exp:string(1):lower()
+    Exp:remove(1)
+    local Args = Exp:concat(" ")
+    if(Cmd=="/url") {
+        hideChat(1)
+        getImage(Args)  
+        
+    } elseif(Cmd:startsWith("/url:")) {
+        hideChat(1)
+        if(Cmd:explode(":"):string(2):toNumber() == Screen:entity():id()) {
+            
+            getImage(Args)    
+        }
+    
+    } 
+
+}
+if(last()) {
+    if(Role!="master") {
+         dsSend("remove_worker", "digital_screen_image_"+GID, 0, entity():id():toString())    
+    } else {
+    
+        printColor(RED, "you have removed the master chip screen drawing will no longer work properly 
+    you may need to remove and replace all sceen e2s")
+    }
+   
+    
+}
