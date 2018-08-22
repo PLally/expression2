@@ -1,7 +1,7 @@
 @name Screen V3
 @inputs Screen:wirelink Url:string
 @persist Workers:table Task:string Role:string
-@persist [API_KEY BASE_URL GID]:string SIZE SPEED AUTO_WIRE
+@persist [API_KEY BASE_URL GID]:string SIZE SPEED AUTO_WIRE SILENT
 @persist CurPixel:number ImgData:string Width Height MyID PixelAmount ScreenHeight ScreenWidth
 @persist Initialized
 @persist [RED GREEN BLUE]:vector
@@ -33,13 +33,13 @@ ACTUAL COMMANDS
     
     there used to be more commands but i got rid of them
 
-About the api
+About the api (doesnt matter for actual use of the e2)s
     
     URL AND PARAMETERS
-    /imgtxt takes parameters 
+    https://api.foxorsomething.net/imgtxt takes parameters 
     width  (width and height must be the same currently)
     height (width and height must be the same currently)
-    url
+    url    url to convert to text
     key    your a api key 
     
     DATA RETURNED
@@ -58,13 +58,13 @@ About the api
     
 ]#
 if(first() | dupefinished()) {
-   
     
     #[ CONFIG ]## 
     API_KEY = "none"
-    BASE_URL = ""
+    BASE_URL = "https://api.foxorsomething.net/imgtxt"
     SIZE = 512    # expected size of the digital screen e.g. 512x512
-    SPEED = 100   # number 10 - 100
+    SPEED = 100   # number 10 - 100, how fast the e2 draws as well as how many ops it uses
+    SILENT = 0    # (not recommended) set this to 1 if you want to turn off the majority of prints 
     #[ END CONFIG ]#
 
     
@@ -77,7 +77,7 @@ if(first() | dupefinished()) {
     #ifdef string:startsWith(string)
         # do nothing because startsWith is  already defined
     #else
-        function string:startsWith(S:string) {
+        function number string:startsWith(S:string) {
              return This:sub(1,S:length())==S    
         }
     #endif
@@ -93,7 +93,9 @@ if(first() | dupefinished()) {
         dsSetScope(0)
         if(dsProbe("digital_screen_image_"+GID,0):count() < 1) {
             Role = "master"   
-            printColor(GREEN, format("%s: no other e2s found, assuming self is master of screen %s", entity():id(), Screen:entity():id()))
+            if(!SILENT){
+                printColor(GREEN, format("%s: no other e2s found, assuming self is master of screen %s", entity():id(), Screen:entity():id()))
+            }
             setName("Screen V3 (Master)")
         } else {
             setName("Screen V3 (Worker)")
@@ -142,7 +144,9 @@ if(first() | dupefinished()) {
         case "register",
             Workers[dsGetSender():id():toString(), number] = 1
             if(Role=="master") {
-                printColor(GREEN, format("master %s: new worker registered worker %s", entity():id(), dsGetSender():id()))
+                if(!SILENT){
+                    printColor(GREEN, format("master %s: new worker registered worker %s", entity():id(), dsGetSender():id()))
+                }
             }
         
         break   
@@ -156,9 +160,9 @@ if(first() | dupefinished()) {
             local K = dsGetString()
             Workers:remove(K)
             if(Role=="master") {
-                
-                printColor(GREEN, "master "+entity():id()+": worker "+K+" removed")
-                printTable(Workers)
+                if(!SILENT){
+                    printColor(GREEN, "master "+entity():id()+": worker "+K+" removed")
+                }
             }
         
         break
@@ -169,8 +173,10 @@ if(first() | dupefinished()) {
     local Data = httpData()
     
     if(Data[1] != "t") {
-        printColor(RED, "Request invalid")
-        print(Data)
+        if(!SILENT){
+            printColor(RED, "Request invalid")
+            print(Data)
+        }
     } else {
         local T = table()
         T["data", string] = Data
@@ -183,7 +189,9 @@ if(first() | dupefinished()) {
  
             } else {
                 Workers:remove(K)
-                printColor(GREEN, "master "+entity():id()+": worker "+K+" removed")
+                if(!SILENT){
+                    printColor(GREEN, "master "+entity():id()+": worker "+K+" removed")
+                }
                 dsSend("remove_worker", "digital_screen_image_"+GID, 0, K) 
             
             }    
