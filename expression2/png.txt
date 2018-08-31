@@ -1,0 +1,381 @@
+
+@name Png Decoder main
+@inputs Screen:wirelink
+@outputs 
+@persist MyIDATATable:table
+@persist Bytes:table Data:string  IDATBytes:table
+@persist Task:string Chunks:table  SubTask
+@persist CurFilterType Cur CurX CurY CurrentScanline:string Scanlines:array
+@trigger 
+#[ NOTES
+ 
+# REMEMBER TO ADD IN CRC SUPPORT LATER
+
+Comfirm all 5  filter types work properly
+Add multi idat chunk support currently images with data split into multiple idat  chunsk dont work
+Add support for more critical chunks
+
+much more needs  to be added to even be 50% compliant with the png specification
+only some pngs will work with this this e2
+]#
+#include "libs/zlib_decode"
+
+#include "libs/safe_print"
+
+if(first()) {
+    #include "libs/bytes"
+    #include "libs/colors"
+    httpRequest("url")
+    Screen[1048569] = 2
+    Screen[1048574]=1
+    Screen[26*12]=0xFF00FF
+    runOnHTTP(1)
+    runOnTick(1)
+    runOnChat(1)
+    
+   
+    #[ filter helper functions ]#
+    
+    function number paethPredictor(A,B, C) {
+        #printSafe(A+" "+B+" "+C+"||")
+        local P = A + B - C 
+        local PA = abs(P-A) 
+        local PB = abs(P-B)
+        local PC = abs(P - C) 
+        if(PA <= PB & PA <=PC) { return A }
+        elseif(PB <= PC) { return B } 
+        else { return C }
+            
+    }
+    #this was just to make writing the filter code easier
+    function number raw(X) {
+        if(X<1) {
+            return 0   
+        }   
+        return toByte(CurrentScanline[X])
+    }
+    function number prior(X) {
+        if(X<1) {
+            return 0   
+        }
+        return toByte(Scanlines[CurY, string][X])
+    }
+    
+    #[ end filter helper functions ]#
+    function table table:pngReadChunk() { # takes byteReader object returns chunk object
+        local T = table()
+        T["length", number] = This:readBytes(4)
+        if(T["length", number] > 0x7FFFFFFF) { printColor(RED, "length is greater than (2^31)-1") }
+        
+        T["type", string] = This:readByteString(4)
+        
+        T["data", string] = This:readByteString(T["length", number])
+        
+        T["CRC", string] = This:readByteString(4)
+        return T
+    }
+    
+    function table string:pngReadIHDR() { # takes chunk data returns IHDR object
+        local T = table()
+        local B = newBytesReader(This)
+        T["width", number] = B:readBytes(4)
+        if(T["width", number] >0x7FFFFFFF | T["width", number] < 1) { 
+            printColor(RED, "width is not between 1 and (2^31)-1") 
+        }
+        
+        T["height", number] = B:readBytes(4)
+        if(T["height", number] >0x7FFFFFFF | T["height", number] < 1) { 
+            printColor(RED, "width is not between 1 and (2^31)-1 ") 
+        }
+        
+        T["bit_depth", number] = B:readByte() # ADD BIT DEPTH CHECK
+        
+        T["color_type", number] = B:readByte() # add check
+
+        T["compression_method", number] = B:readByte()
+        if( T["compression_method", number] != 0 ) {
+            printColor(RED, "Error unsupported compression method") 
+        }
+        T["filter_method", number] = B:readByte()
+        if(T["filter_method", number] != 0 ) {
+            printColor(RED, "unsupported filter method")   
+        }
+        
+        T["interlace_method", number] = B:readByte()
+        return T
+    }
+    
+}
+elseif(httpClk()) {
+    Data = httpData()
+    Bytes = newBytesReader(Data)
+    
+    #png signature check
+    if(Bytes:readBytes(8) != 0x89504E470D0A1800) {
+        error("signature did not match")   
+    } else {
+        printColor(BLUE,"png signature matched")
+    }  
+    Task = "start_chunk_read"
+   
+} elseif(tickClk()) {
+    switch(Task) {
+    
+    case "start_chunk_read",
+    
+        while(perf(60)) {
+            local C = Bytes:pngReadChunk() 
+            local T = C["type", string]
+
+            if(T[1]:lower() == T[1]) {
+                #print("skipping "+T)   
+            }
+            elseif(T == "IEND") {
+                Task = "decode_idat"
+               
+            
+                #print("IEND")
+                break   
+            } elseif(T == "IHDR") {
+                Chunks["IHDR", table] = C["data", string]:pngReadIHDR()
+                printTable(Chunks["IHDR",table])
+               
+            }
+            elseif(T == "IDAT") {
+
+                Chunks["idat1", table] = C
+
+                C["data", string]:zlibDecodeInto(MyIDATATable)
+
+            } else {
+                printColor("RED", "unknown critical chunk "+T)
+            
+            }
+        }
+    
+    
+    break
+    
+    case "decode_idat",
+        switch(SubTask) {
+            
+        case 0,
+            if(MyIDATATable["done", number]) { 
+                printSafe(MyIDATATable["error", string])
+                printSafe(MyIDATATable["data", string]:length()+"L2")
+                
+                IDATBytes = newBytesReader(MyIDATATable["data", string])
+                CurFilterType = IDATBytes:readByte()
+      
+                CurY = 0
+                CurX = 0
+                Task = "decode_idat"
+                SubTask++
+            }
+        break
+        
+        case 1,
+            local BitDepth = Chunks["IHDR", table]["bit_depth", number]
+            local ColorType = Chunks["IHDR", table]["color_type", number]
+            local Height = Chunks["IHDR", table]["height", number]
+            local Width = Chunks["IHDR", table]["width", number]
+            
+            while(perf()) {
+                
+                
+                switch(ColorType) {
+                case 2,
+ 
+                    if(BitDepth!=8) { 
+                        Task = "DONE"
+                        error("error unspported color type or bit depth")
+                    }
+                    local P = 0x42C8F4
+                    if(CurFilterType==0) {
+                        local R = IDATBytes:readByte()
+                        CurrentScanline+=toChar(R)
+                        local G = IDATBytes:readByte()
+                        CurrentScanline+=toChar(G)
+                        local B = IDATBytes:readByte()
+                        CurrentScanline+=toChar(B)
+                        P = (R << 16) + (G << 8) + B
+                        #printSafe(R+", "+G+", "+B+", ")
+                        
+                    } elseif(CurFilterType==1) {
+                        local Bpp =3
+                        local R = (IDATBytes:readByte()+raw(CurrentScanline:length()-Bpp+1))%256
+                        CurrentScanline+=toChar(R)
+                        local G = (IDATBytes:readByte()+raw(CurrentScanline:length()-Bpp+1))%256
+                        CurrentScanline+=toChar(G)
+                        local B = (IDATBytes:readByte()+raw(CurrentScanline:length()-Bpp+1))%256
+                        CurrentScanline+=toChar(B)
+                         P = (R << 16) + (G << 8) + B
+                        #printSafe(R+", "+G+", "+B+", ")
+                    } elseif(CurFilterType==2) {
+                        local Bpp =3
+                        local R = (IDATBytes:readByte()+prior(CurrentScanline:length()+1))%256
+                        CurrentScanline+=toChar(R)
+                        local G = (IDATBytes:readByte()+prior(CurrentScanline:length()+1))%256
+                        CurrentScanline+=toChar(G)
+                        local B = (IDATBytes:readByte()+prior(CurrentScanline:length()+1))%256
+                        CurrentScanline+=toChar(B)
+                        P = (R << 16) + (G << 8) + B
+                        #printSafe(R+", "+G+", "+B+", ")
+                    } elseif(CurFilterType==3) { 
+                        local Bpp =3
+                        local R = (IDATBytes:readByte()+ floor((raw(CurrentScanline:length()-Bpp+1)+prior(CurrentScanline:length()+1))/2))%256
+                        CurrentScanline+=toChar(R)
+                        local G = (IDATBytes:readByte()+ floor((raw(CurrentScanline:length()-Bpp+1)+prior(CurrentScanline:length()+1))/2))%256
+                        CurrentScanline+=toChar(G)
+                        local B = (IDATBytes:readByte()+ floor((raw(CurrentScanline:length()-Bpp+1)+prior(CurrentScanline:length()+1))/2))%256
+                        CurrentScanline+=toChar(B)
+                        P = (R << 16) + (G << 8) + B
+                    } elseif(CurFilterType==4) {
+                        local Bpp =3
+                         local R = (IDATBytes:readByte()+paethPredictor(raw(CurrentScanline:length()-Bpp+1), 
+                                                                       prior(CurrentScanline:length()+1),
+                                                                       prior(CurrentScanline:length()+1-3)))%256
+                        CurrentScanline+=toChar(R)
+                        local G = (IDATBytes:readByte()+paethPredictor(raw(CurrentScanline:length()-Bpp+1), 
+                                                                       prior(CurrentScanline:length()+1),
+                                                                       prior(CurrentScanline:length()+1-3)))%256
+                        CurrentScanline+=toChar(G)
+                        local B = (IDATBytes:readByte()+paethPredictor(raw(CurrentScanline:length()-Bpp+1), 
+                                                                       prior(CurrentScanline:length()+1),
+                                                                       prior(CurrentScanline:length()+1-3)))%256
+                        CurrentScanline+=toChar(B)
+                        P = (R << 16) + (G << 8) + B
+                        #printSafe(R+", "+G+", "+B+", l")
+                    }
+                    Screen[CurY*Width+CurX] = P
+                
+                
+                break   
+                case 6,
+                    if(BitDepth!=8) { 
+                        Task = "DONE"
+                        printColor(RED,"error unspported color type or bit depth")
+                    }
+                    local P = 0xFFFFFF
+                    if(CurFilterType==0) {
+                        local R = IDATBytes:readByte()
+                        CurrentScanline+=toChar(R)
+                        local G = IDATBytes:readByte()
+                        CurrentScanline+=toChar(G)
+                        local B = IDATBytes:readByte()
+                        CurrentScanline+=toChar(B)
+                        local A = IDATBytes:readByte()
+                        CurrentScanline+=toChar(A)
+                        P = (R << 16) + (G << 8) + B
+                        printSafe(R+", "+G+", "+B+", ")
+                        
+                    } elseif(CurFilterType==1) {
+                        local Bpp =4
+                        local R = (IDATBytes:readByte()+raw(CurrentScanline:length()-Bpp+1))%256
+                        CurrentScanline+=toChar(R)
+                        local G = (IDATBytes:readByte()+raw(CurrentScanline:length()-Bpp+1))%256
+                        CurrentScanline+=toChar(G)
+                        local B = (IDATBytes:readByte()+raw(CurrentScanline:length()-Bpp+1))%256
+                        CurrentScanline+=toChar(B)
+                        local A = (IDATBytes:readByte()+raw(CurrentScanline:length()-Bpp+1))%256
+                        CurrentScanline+=toChar(A) #alpha isnt used because digital screens dont even support alpha
+                        P = (R << 16) + (G << 8) + B
+                        printSafe(R+", "+G+", "+B+", ")
+                    } elseif(CurFilterType==2) {
+                        local Bpp =4
+                        local R = (IDATBytes:readByte()+prior(CurrentScanline:length()+1))%256
+                        CurrentScanline+=toChar(R)
+                        local G = (IDATBytes:readByte()+prior(CurrentScanline:length()+1))%256
+                        CurrentScanline+=toChar(G)
+                        local B = (IDATBytes:readByte()+prior(CurrentScanline:length()+1))%256
+                        CurrentScanline+=toChar(B)
+                        local A = (IDATBytes:readByte()+prior(CurrentScanline:length()+1))%256
+                        CurrentScanline+=toChar(A)
+                        P = (R << 16) + (G << 8) + B
+                        printSafe(R+", "+G+", "+B+", ")
+                    } elseif(CurFilterType==3) {
+                        local Bpp =4
+                        local R = (IDATBytes:readByte()+ floor((raw(CurrentScanline:length()-Bpp+1)+prior(CurrentScanline:length()+1))/2))%256
+                        CurrentScanline+=toChar(R)
+                        local G = (IDATBytes:readByte()+ floor((raw(CurrentScanline:length()-Bpp+1)+prior(CurrentScanline:length()+1))/2))%256
+                        CurrentScanline+=toChar(G)
+                        local B = (IDATBytes:readByte()+ floor((raw(CurrentScanline:length()-Bpp+1)+prior(CurrentScanline:length()+1))/2))%256
+                        CurrentScanline+=toChar(B)
+                        local A = (IDATBytes:readByte()+ floor((raw(CurrentScanline:length()-Bpp+1)+prior(CurrentScanline:length()+1))/2))%256
+                        CurrentScanline+=toChar(A)
+                        P = (R << 16) + (G << 8) + B
+                    } elseif(CurFilterType==4) {
+                        local Bpp =4
+                         local R = (IDATBytes:readByte()+paethPredictor(raw(CurrentScanline:length()-Bpp+1), 
+                                                                       prior(CurrentScanline:length()+1),
+                                                                       prior(CurrentScanline:length()+1-3)))%256
+                        CurrentScanline+=toChar(R)
+                        local G = (IDATBytes:readByte()+paethPredictor(raw(CurrentScanline:length()-Bpp+1), 
+                                                                       prior(CurrentScanline:length()+1),
+                                                                       prior(CurrentScanline:length()+1-3)))%256
+                        CurrentScanline+=toChar(G)
+                        local B = (IDATBytes:readByte()+paethPredictor(raw(CurrentScanline:length()-Bpp+1), 
+                                                                       prior(CurrentScanline:length()+1),
+                                                                       prior(CurrentScanline:length()+1-3)))%256
+                        CurrentScanline+=toChar(B)
+                        local A = (IDATBytes:readByte()+paethPredictor(raw(CurrentScanline:length()-Bpp+1), 
+                                                                       prior(CurrentScanline:length()+1),
+                                                                       prior(CurrentScanline:length()+1-3)))%256
+                        CurrentScanline+=toChar(A)
+                        P = (R << 16) + (G << 8) + B
+                        printSafe(R+", "+G+", "+B+", l")
+                    }
+                    Screen[CurY*Width+CurX] = P
+                
+                
+                
+                break
+                default, 
+                    error("unsupported color type: "+ColorType)
+                
+                break    
+                }
+                CurX++
+
+                if(CurX>=Width) {
+                    CurX = 0
+                    CurFilterType = IDATBytes:readByte()
+                    printSafe("|"+CurFilterType:toString()+" | "+CurY+" F "+IDATBytes["data", string]:length())
+                    Scanlines:pushString(CurrentScanline)
+                    CurrentScanline = ""
+                    CurY++   
+                    
+                }
+                if(CurY>=Height) {
+                    
+                    #printSafe("DONE", Y, Height)
+                    Task = "done"   
+                    break
+                }    
+                
+            }
+        
+        
+        
+        break
+    }
+    break
+           
+        
+    }     
+        
+    
+ 
+} elseif( chatClk(owner())) {
+    local Exp = owner():lastSaid():explode(" ")
+    local Cmd = Exp:string(1):lower()
+    Exp:remove(1)
+    local Args = Exp:concat(" ")
+    if(Cmd == "/decodeurl") {
+        httpRequest(Args)   
+        hideChat(1)
+    }
+    
+} 
+
+
