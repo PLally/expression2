@@ -41,7 +41,7 @@
 
 # includes that require running on tick
 
-#include "libs/TreeGen"
+#include "libs/tree_gen"
 #include "libs/safe_print"
 Test_count = Z_Bytes["current_byte", number]
 if(first()) {
