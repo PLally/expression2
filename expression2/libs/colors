@@ -1,0 +1,5 @@
+@persist [RED GREEN BLUE]:vector
+
+RED = vec(255,0,0)
+GREEN = vec(0,255,0)
+BLUE = vec(0,0,255)
