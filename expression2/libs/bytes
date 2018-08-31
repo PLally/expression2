@@ -1,0 +1,97 @@
+function table newBytesReader(S:string) {
+    local T = table()
+    T["data", string] = S
+    T["current_byte", number] = 0
+    T["current_bit", number] = 0 
+    return T
+}
+
+function number table:readByte() {
+    
+    This["current_byte", number] = This["current_byte", number]+1
+    This["current_bit", number] = 0
+    local Byte = toByte(This["data", string], 1)
+    This["data", string] = This["data", string]:sub(2)
+    return Byte
+}
+
+function number table:readByte2() {
+    
+    This["current_byte", number] = This["current_byte", number]+1
+    This["current_bit", number] = 0
+    local Byte33 = toByte(This["data", string], 1)
+    This["data", string] = This["data", string]:sub(2)
+    return Byte33
+}
+
+function number table:readBytes(N:number) {
+    if(N<=0) {
+        return 0
+    }
+    This["current_bit", number] = 0
+    local Final = 0
+    for(I=0, N-1) {
+        This["current_byte", number] = This["current_byte", number]+1    
+        local Byte = toByte(This["data", string], 1+I)
+        Final = Final*2^8+Byte
+    }
+    This["data", string] = This["data", string]:sub(1+N)     
+    return Final
+}
+
+function string table:readByteString(N:number) {
+    This["current_bit", number] = 0
+    This["current_byte", number]= This["current_byte", number]+N
+    local S = This["data", string]:sub(1,N) 
+    This["data", string] = This["data", string]:sub(1+N)
+    return S
+}
+
+function number table:readBits(N:number) {
+    if(N<=0) {
+        
+        return 0    
+    }
+    local Byte = toByte(This["data", string], 1)
+    local Cur_bit = This["current_bit", number]
+    local Final = 0
+    for(I=0, N-1) {
+        local Bit = (Byte >> Cur_bit) && 1 
+        Final += (2^I)*Bit
+        Cur_bit++
+        if(Cur_bit > 7) {
+            Cur_bit = 0
+            This["current_byte", number] =  This["current_byte", number]+1
+            This["current_bit", number] = 0
+            This["data", string] = This["data", string]:sub(2)
+            Byte = toByte(This["data", string], 1)
+        }
+    }
+    This["current_bit", number] = Cur_bit
+    return Final
+}
+
+function number table:readBitsR(N:number) {
+    if(N<=0) {
+        
+        return 0    
+    }
+    local Byte = toByte(This["data", string], 1)
+    local Cur_bit = This["current_bit", number]
+    local Final = 0
+    for(I=0, N-1) {
+        local Bit = (Byte >> Cur_bit) && 1 
+        Final = Final*2+Bit
+        Cur_bit++
+        if(Cur_bit > 7) {
+            Cur_bit = 0
+            This["current_byte", number] =  This["current_byte", number]+1
+            This["current_bit", number] = 0
+            This["data", string] = This["data", string]:sub(2)
+            Byte = toByte(This["data", string], 1)
+ 
+        }
+    }
+    This["current_bit", number] = Cur_bit
+    return Final
+}
