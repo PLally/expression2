@@ -1,3 +1,4 @@
+#TODO rewrite bytes.txt
 function table newBytesReader(S:string) {
     local T = table()
     T["data", string] = S
@@ -15,15 +16,11 @@ function number table:readByte() {
     return Byte
 }
 
-function number table:readByte2() {
-    
-    This["current_byte", number] = This["current_byte", number]+1
+function void table:skipBytes(N:number) {
     This["current_bit", number] = 0
-    local Byte33 = toByte(This["data", string], 1)
-    This["data", string] = This["data", string]:sub(2)
-    return Byte33
+    This["current_byte", number]= This["current_byte", number]+N
+    This["data", string] = This["data", string]:sub(1+N)
 }
-
 function number table:readBytes(N:number) {
     if(N<=0) {
         return 0
@@ -95,3 +92,7 @@ function number table:readBitsR(N:number) {
     This["current_bit", number] = Cur_bit
     return Final
 }
+
+
+
+
