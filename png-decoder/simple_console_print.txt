@@ -1,0 +1,30 @@
+@inputs Console:wirelink
+@outputs 
+@persist ProgressCounterText:string ProgressColor:vector
+@trigger 
+if(first()) {
+    function printToConsole(Color:vector, S:string) {
+        printColorC(Color, S+"\n")
+        local H = 0
+        if(ProgressCounterText:length() > 0) {
+            H = 1
+            Console[2039] = 17
+        }
+        local O = S:explode("\n"):count()
+        Console[2038] = O
+        
+        
+        Console:writeString(S,0,18-O-H, Color)
+        if(ProgressCounterText:length() > 0) {
+            Console:writeString(ProgressCounterText,0,17, ProgressColor)   
+        }
+    }
+    
+    function progressCounter(Color:vector, Text:string) {
+        ProgressCounterText = Text
+        ProgressColor = Color
+        Console[2039] = 17
+        Console:writeString(Text,0,17, ProgressColor)  
+    }
+} 
+

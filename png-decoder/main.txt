@@ -1,0 +1,298 @@
+@name PNG decoder V2
+@inputs Screen:wirelink Url:string
+@persist Data:table CurrentChunk:table Chunks:table IHDR:table ZlibDecoder:table ImageData:table [CurrentScanline PreviousScanline]:array
+@persist TIMER_DELAY PNG_SIGNATURE ERROR_COLOR:vector INFO_COLOR:vector FilterType X Y ColorTypeSizes:table SLOW_TIMER_DELAY InterlacePass:number
+@persist StartTime DigiSize DISPLAY_MODE
+# dynamic includes #
+#include "github/plally/expression2/e2-png-decoder/zlib"
+
+if(first()) {
+    # static includes #
+    #include "github/plally/expression2/libs/bytes"
+    #include "github/plally/expression2/e2-png-decoder/simple_console_print"
+    
+    Console[2041] = 1
+    Console[2042] = 122
+    
+    # constants #
+    TIMER_DELAY = 1 # you can change this delay to improve server performance
+    SLOW_TIMER_DELAY = 1000
+    PNG_SIGNATURE = 0x89504E470D0A1A0A	  
+    ERROR_COLOR = vec(255,0,0)
+    INFO_COLOR = vec(66, 161, 244)
+    ColorTypeSizes = table(2 = 3, # RGB
+                           6 = 4, # RGBA
+                           0 = 1, # GRAY
+                           4 = 2) # GRAYA
+    DISPLAY_MODE = 1 # 0 stretch to fill, 1 no stretch
+                        
+    # TODO option to not stretch image to fit whole screen
+    # functions #
+    function displayUrl(Url:string) {
+        StartTime = curtime()
+        httpRequest(Url)   
+    }
+    function pngDone() {
+        
+        Data = table()
+        Chunks = table()
+        IHDR = table()
+        ZlibDecoder = table()
+        ImageData = table()
+        CurrentScanline = array()
+        PreviousScanline = array()
+        FilterType = 0
+        
+        local TimeString = round(curtime() - StartTime)
+        printToConsole(INFO_COLOR, "Done decoding png.")
+        printToConsole(INFO_COLOR, "it took "+TimeString+" seconds.")
+        
+    }
+    function zlib_done_callback(D:table) {
+        printToConsole(INFO_COLOR, "Zlib decoding done")
+        printToConsole(INFO_COLOR, "decompressed "+D["out", string]:length()+" bytes")
+        ImageData = newBytesReader(D["out", string])
+        FilterType = ImageData:readByte()
+        InterlacePass = 
+        X = 0
+        Y = 0
+        timer("read_image_data", TIMER_DELAY)
+    }
+    
+    function number paethPredictor(A,B, C) {
+        local P = A + B - C 
+        local PA = abs(P-A) 
+        local PB = abs(P-B)
+        local PC = abs(P - C) 
+        if(PA <= PB & PA <=PC) { return A }
+        elseif(PB <= PC) { return B } 
+        else { return C }
+            
+    }
+    function number prior(N) {
+        if(N<1) {
+            return 0   
+        }  
+        return PreviousScanline[N, number]
+    }
+    function number raw(N) {
+        if(N<1) {
+            return 0   
+        }   
+        return CurrentScanline[N, number]
+    }
+    #[test images
+        Grayscale: "https://i.imgur.com/kHYpTeq.png" 46 seconds
+        GrayscaleA "https://i.imgur.com/L9vSmQE.png" 57 seconds
+        RGB: "https://i.imgur.com/p7NOfZF.png" 105 seconds
+        RGBA: "https://i.imgur.com/cUt9pJR.png" 129
+        
+        RGBA 16: "https://i.imgur.com/Y9UbKf6.png" 190 seconds
+        RGB 16:  "https://i.imgur.com/0x46AZw.png" 178 seconds
+        GRAY 16: "https://i.imgur.com/CzRSbgo.png" 136 seconds
+        GRAYA 16: "https://i.imgur.com/1J36Yna.png"
+    
+    ]#
+    displayUrl("https://i.imgur.com/1J36Yna.png")
+    runOnHTTP(1)
+    runOnChat(1)
+} elseif(chatClk(owner())) {
+    local Cmd = lastSaid():explode(" "):string(1):lower()
+    local ArgsA = lastSaid():explode(" ")
+    ArgsA:remove(1)
+    Args = ArgsA:concat(" ")
+    if(Cmd == "/url") {
+        Console[2041] = 1
+        Console[2042] = 122
+        displayUrl(Args)
+    } elseif(Cmd == "/stopall") {
+        stopAllTimers()
+    }
+} elseif(Url:length() > 0 & ~Url) {
+    displayUrl(Url)
+} elseif(changed(httpData()) & httpData():length() > 10) {
+    Data = newBytesReader(httpData())
+    ZlibDecoder = newDecoder()
+    Screen[1048569] = 2 #color mode 2
+    Screen[1048574] = 1 #clear
+
+    if(Data:readBytes(8) != PNG_SIGNATURE) {
+        printColor(ERROR_COLOR, "this is not a png\n")   
+        exit()
+    }      
+    timer("next_chunk", 1)
+} elseif(clk("next_chunk")) {
+    
+    CurrentChunk = table()
+    local Length = Data:readBytes(4)
+    local Type = Data:readByteString(4)
+
+    CurrentChunk["length", number] = Length
+    CurrentChunk["type", string] = Type
+    if(Type[1]:isLower()) {
+        Data:skipBytes(Length+4)
+        printToConsole(INFO_COLOR, "Skipping ancillary chunk "+Type)
+        timer("next_chunk", TIMER_DELAY)
+        exit()
+    }
+    if(Type[2]:isLower()) {
+        Data:skipBytes(Length+4)
+        printToConsole(INFO_COLOR, "Skipping private chunk "+Type)
+        timer("next_chunk", TIMER_DELAY)
+        exit()
+    }
+    timer("decode_current_chunk", TIMER_DELAY)
+    
+} elseif(clk("decode_current_chunk")) {
+    local Type = CurrentChunk["type", string]
+    local Length = CurrentChunk["length", number]
+    switch(Type) {
+        case "IHDR",
+            IHDR = table()
+            IHDR["width", number] = Data:readBytes(4)
+            IHDR["height", number] = Data:readBytes(4)
+            IHDR["bit_depth", number] = Data:readBytes(1)
+            IHDR["color_type", number] = Data:readBytes(1)
+            IHDR["compression_method", number] = Data:readBytes(1)
+            IHDR["filter_method", number] = Data:readBytes(1)
+            IHDR["interlace_method", number] = Data:readBytes(1)
+            IHDR["bytes_per_pixel", number] = ColorTypeSizes[IHDR["color_type", number], number] * ( IHDR["bit_depth", number]/8 )
+            
+            if(!ColorTypeSizes:exists(IHDR["color_type", number])) {
+                printColor(ERROR_COLOR, "Unsupported color type "+IHDR["color_type", number])
+                exit()   
+            }
+            
+            if(IHDR["bit_depth", number] != 8 & IHDR["bit_depth", number] != 16) { # TODO support more bit depths
+                printColor(ERROR_COLOR, "Unsupported bit depth")
+                exit()   
+            }
+            # set screen height and width
+            switch(DISPLAY_MODE) {   
+                case 0,
+                    Screen[1048572] = IHDR["height", number] 
+                    Screen[1048573] = IHDR["width", number]
+                    DigiSize = IHDR["width", number]
+                break
+                case 1,
+                    DigiSize = max(IHDR["height", number], IHDR["width", number])
+                    Screen[1048572] = DigiSize
+                    Screen[1048573] = DigiSize
+                break
+            
+            }
+            
+            local CRC = Data:readBytes(4) # TODO actually use CRC
+            timer("next_chunk", TIMER_DELAY)
+            
+            printToConsole(INFO_COLOR, IHDR:toString()) 
+            
+        break
+        case "IDAT",     
+             
+            ZlibDecoder:addData(Data:readByteString(Length), Data:readBytes(4))
+            printToConsole(INFO_COLOR, "IDAT data added to decoder")
+            timer("next_chunk", TIMER_DELAY)
+        break
+        case "IEND",
+            printToConsole(INFO_COLOR, "read IEND chunk")
+            ZlibDecoder:decode("zlib_done_callback")
+            exit()
+        break
+        default,
+            Data:skipBytes(Length+4)
+            
+            printToConsole(INFO_COLOR, "Skipping Unrecognized chunk "+Type)
+            timer("next_chunk", TIMER_DELAY)
+        break
+        
+    }
+    
+} elseif(clk("read_image_data")) {
+    while(perf(90)) {
+        X++
+        if(X>IHDR["width", number]) {
+            Y++
+            X=1   
+            FilterType = ImageData:readByte()
+            PreviousScanline = CurrentScanline
+            CurrentScanline = array()
+            
+        }
+        if(Y>=IHDR["height", number] | X>IHDR["width", number]) { 
+            pngDone()
+            exit() 
+        }
+        local Pixel = 0
+        local Bpp = IHDR["bytes_per_pixel", number] # bytes per pixel
+        local Pos = CurrentScanline:count()
+        local PString = ImageData:readByteString(Bpp) # pixel in string form
+        local PixelBytes = array()
+        local InterlaceMethod = IHDR["interlace_method", number]
+        # TODO pngs could have different bit depths
+        # http://www.libpng.org/pub/png/spec/1.2/PNG-Filters.html
+        # TODO improve performance by reducing use of functions
+        switch(FilterType) {
+            case 0, # filter method 0 none
+                for(I=1, Bpp) {
+                    Pos++
+                    PixelBytes[I, number] = toByte(PString[I])
+                }
+            break
+            case 1, # filter method 1 sub [Raw(x) = Sub(x) + Raw(x-bpp)]
+                for(I=1, Bpp) {
+                    Pos++
+                    PixelBytes[I, number] = ( toByte(PString[I]) + raw(Pos-Bpp) ) %256
+                }
+            break
+            case 2, # filter method 2 up [Raw(x) = Up(x) + Prior(x)]
+                for(I=1, Bpp) {
+                    Pos++
+                    PixelBytes[I, number] = ( toByte(PString[I]) + prior(Pos) ) %256
+                }
+            break
+            case 3, # filter method 3 average [Raw(x) =  Average(x) + floor((Raw(x-bpp)+Prior(x))/2)]
+                for(I=1, Bpp) {
+                    Pos++
+                    PixelBytes[I, number] = ( toByte(PString[I]) + floor((raw(Pos-Bpp)+prior(Pos))/2) ) %256
+                }
+            break
+            case 4, # filter method 4 paeth [Raw(x) = Paeth(x) +  PaethPredictor(Raw(x-bpp), Prior(x), Prior(x-bpp))]
+                for(I=1, Bpp) {
+                    Pos++
+                    PixelBytes[I, number] = ( toByte(PString[I]) + paethPredictor(raw(Pos-Bpp),
+                                                                prior(Pos),
+                                                                prior(Pos-Bpp) ) )   %256
+                }                
+            break
+            default,
+                print(FilterType+" filter not implemented")
+            break
+            
+        }
+        
+        
+        local ColorType = IHDR["color_type", number]
+
+        CurrentScanline = CurrentScanline:add(PixelBytes)
+        if(IHDR["bit_depth", number] == 16) { # changed bit depth 16 colors into 8
+            for(I=2, Bpp, 2) {
+                PixelBytes[I/2, number] = ( (PixelBytes[I-1, number] <<8) + PixelBytes[I, number] ) /0xFF
+            }  
+            
+        }
+        if(ColorType == 2 | ColorType == 6) {
+            local R = PixelBytes[1, number]
+            local G = PixelBytes[2, number]
+            local B = PixelBytes[3, number]
+            Pixel = rgb2digi(R, G, B, 2) 
+        } elseif(ColorType == 0 | ColorType == 4) {
+            local C = PixelBytes[1, number]
+            Pixel = (C<<16)+(C<<8)+C
+        }
+        Screen[Y*DigiSize+X-1] = Pixel
+        
+        
+    }
+    timer("read_image_data", TIMER_DELAY)
+}

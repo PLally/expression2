@@ -1,0 +1,301 @@
+#[ ZLIB deflate decoder
+    must define TIMER_DELAY ]# 
+@persist Decoder:table ZBytes:table BFinal BType CurrentCode:number FIXED_HUFFMAN_LOOKUP:table 
+@persist [DISTANCE_BASE DISTANCE_EXTRA_BITS LENGTH_BASE LENGTH_EXTRA_BITS CODE_LENGTH_CODE_ORDER]:array
+@persist LitLengthHuffmanLookup:table CodeLengthsHuffmanLookup:table DistanceHuffmanLookup:table CodeLengths:array NLitLength NDistance ZI
+@persist TotalBytes ZlibDone ZStartTime
+
+if(first()) {
+    
+    #[ TODO change to allow adding data while decoding e.g.
+        READ IDAT
+        ZlibDecoder:addData
+            Decoder starts decoding
+        READ IDAT2
+        ZlibDecoder:addData
+    ]#
+    FIXED_HUFFMAN_LOOKUP = table(128	=	257, 129	=	258, 130	=	259, 131	=	260, 132	=	261, 133	=	262, 134	=	263, 135	=	264, 136	=	265, 137	=	266, 138	=	267, 139	=	268, 140	=	269, 141	=	270, 142	=	271, 143	=	272, 144	=	273, 145	=	274, 146	=	275, 147	=	276, 148	=	277, 149	=	278, 150	=	279, 151	=	280, 304	=	1, 305	=	2, 306	=	3, 307	=	4, 308	=	5, 309	=	6, 310	=	7, 311	=	8, 312	=	9, 313	=	10, 314	=	11, 315	=	12, 316	=	13, 317	=	14, 318	=	15, 319	=	16, 320	=	17, 321	=	18, 322	=	19, 323	=	20, 324	=	21, 325	=	22, 326	=	23, 327	=	24, 328	=	25, 329	=	26, 330	=	27, 331	=	28, 332	=	29, 333	=	30, 334	=	31, 335	=	32, 336	=	33, 337	=	34, 338	=	35, 339	=	36, 340	=	37, 341	=	38, 342	=	39, 343	=	40, 344	=	41, 345	=	42, 346	=	43, 347	=	44, 348	=	45, 349	=	46, 350	=	47, 351	=	48, 352	=	49, 353	=	50, 354	=	51, 355	=	52, 356	=	53, 357	=	54, 358	=	55, 359	=	56, 360	=	57, 361	=	58, 362	=	59, 363	=	60, 364	=	61, 365	=	62, 366	=	63, 367	=	64, 368	=	65, 369	=	66, 370	=	67, 371	=	68, 372	=	69, 373	=	70, 374	=	71, 375	=	72, 376	=	73, 377	=	74, 378	=	75, 379	=	76, 380	=	77, 381	=	78, 382	=	79, 383	=	80, 384	=	81, 385	=	82, 386	=	83, 387	=	84, 388	=	85, 389	=	86, 390	=	87, 391	=	88, 392	=	89, 393	=	90, 394	=	91, 395	=	92, 396	=	93, 397	=	94, 398	=	95, 399	=	96, 400	=	97, 401	=	98, 402	=	99, 403	=	100, 404	=	101, 405	=	102, 406	=	103, 407	=	104, 408	=	105, 409	=	106, 410	=	107, 411	=	108, 412	=	109, 413	=	110, 414	=	111, 415	=	112, 416	=	113, 417	=	114, 418	=	115, 419	=	116, 420	=	117, 421	=	118, 422	=	119, 423	=	120, 424	=	121, 425	=	122, 426	=	123, 427	=	124, 428	=	125, 429	=	126, 430	=	127, 431	=	128, 432	=	129, 433	=	130, 434	=	131, 435	=	132, 436	=	133, 437	=	134, 438	=	135, 439	=	136, 440	=	137, 441	=	138, 442	=	139, 443	=	140, 444	=	141, 445	=	142, 446	=	143, 447	=	144, 448	=	281, 449	=	282, 450	=	283, 451	=	284, 452	=	285, 453	=	286, 454	=	287, 455	=	288, 1023	=	256, 999	=	232, 1021	=	254, 1003	=	236, 1019	=	252, 1001	=	234, 1017	=	250, 1005	=	238, 1015	=	248, 1009	=	242, 1013	=	246, 1007	=	240, 1011	=	244, 1010	=	243, 1008	=	241, 1014	=	247, 1012	=	245, 1018	=	251, 1016	=	249, 1022	=	255, 1020	=	253, 994	=	227, 992	=	225, 998	=	231, 996	=	229, 1002	=	235, 1000	=	233, 1006	=	239, 1004	=	237, 978	=	211, 976	=	209, 982	=	215, 980	=	213, 986	=	219, 984	=	217, 990	=	223, 988	=	221, 963	=	196, 961	=	194, 967	=	200, 965	=	198, 971	=	204, 969	=	202, 975	=	208, 973	=	206, 949	=	182, 951	=	184, 945	=	178, 946	=	179, 956	=	189, 958	=	191, 952	=	185, 954	=	187, 932	=	165, 935	=	168, 928	=	161, 930	=	163, 941	=	174, 943	=	176, 937	=	170, 939	=	172, 916	=	149, 918	=	151, 912	=	145, 914	=	147, 924	=	157, 926	=	159, 920	=	153, 922	=	155, 997	=	230, 995	=	228, 993	=	226, 991	=	224, 989	=	222, 987	=	220, 985	=	218, 983	=	216, 981	=	214, 979	=	212, 977	=	210, 944	=	177, 950	=	183, 948	=	181, 972	=	205, 974	=	207, 968	=	201, 970	=	203, 964	=	197, 966	=	199, 960	=	193, 962	=	195, 915	=	148, 921	=	154, 923	=	156, 925	=	158, 927	=	160, 934	=	167, 947	=	180, 942	=	175, 940	=	173, 953	=	186, 955	=	188, 957	=	190, 959	=	192, 919	=	152, 917	=	150, 929	=	162, 913	=	146, 933	=	166, 931	=	164, 936	=	169, 938	=	171)
+    
+    # TODO try and find a better solution that doesnt involve storing all the values in an array
+    DISTANCE_BASE =  array(1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577)
+    LENGTH_BASE = array(3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258)
+    LENGTH_EXTRA_BITS = array(0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0)
+    DISTANCE_EXTRA_BITS = array(0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13)
+    CODE_LENGTH_CODE_ORDER = array(16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15)
+    
+    #include "github/plally/expression2/libs/bytes"  
+    #include "github/plally/expression2/e2-png-decoder/treegen"
+    INFO_COLOR = vec(66, 161, 244)
+    TIMER_DELAY = 1
+    SLOW_TIMER_DELAY = 1000
+    ERROR_COLOR = vec(0)
+    #ifdef printToConsole(vector, string)
+    #else
+        function printToConsole(V:vector, S:string) {}
+    #endif
+    #ifdef progressCounter(vector, string) 
+    #else
+        function progressCounter(V:vector, S:string) {}
+    #endif
+    
+    function table newDecoder() {
+        LitLengthHuffmanLookup = table()
+        CodeLengths = array()
+        Decoder = table()
+        BFinal = 0
+        local T = table()
+        T["state", string] = "initialized"
+        T["out", string] = ""
+        T["done_callback", string] = ""
+        T["bytes", table]   = newBytesReader("")   
+        ZBytes = T["bytes", table]
+        Decoder = T
+        return T
+    }
+    
+    function table:addData(S:string, CRC:number) { 
+        # TODO CRC
+        This["bytes", table]["data", string] = This["bytes", table]["data", string] + S   
+    }
+    
+    function table:zlibDone() {
+        ZlibDone = 1
+        progressCounter(vec(0), "")
+        if(This["done_callback", string]:length() > 0 ) {
+            This["done_callback", string](This)  
+        }
+        
+    }
+    function progress() {
+        local PercentDone = round( (ZBytes["current_byte", number]/TotalBytes)*100, 2)
+        local BytesLeft = TotalBytes-ZBytes["current_byte", number]
+        local TimeTaken = curtime()-ZStartTime
+        local Seconds = (TimeTaken/ZBytes["current_byte", number])*(BytesLeft)
+        local Minutes = floor(Seconds/60)
+        Seconds = min(60, ceil(Seconds%60))
+
+        progressCounter(INFO_COLOR, format("%05.2f%%, time left: %02s:%02s", PercentDone, Minutes, Seconds))
+        
+    }
+    function void table:nextBlock() {
+        progress()
+        if( BFinal ) {
+            This:zlibDone()
+            return
+        } 
+         
+        BFinal = ZBytes:readBits(1)
+        BType = ZBytes:readBits(2)
+        
+        
+        printToConsole(INFO_COLOR, "BType: 0b"+BType:toString(2))
+        This["state", string] = "decoding"    
+        timer("decode_init", TIMER_DELAY)    
+        
+    }
+    
+    function table:decode(DoneCallback:string) {
+        ZStartTime = curtime()
+        This["done_callback", string] = DoneCallback
+        local CMF = ZBytes:readByte()
+        local FLG = ZBytes:readByte()
+        # TODO handle compression info
+        
+        if( (CMF*256 + FLG) %31) { 
+            printColor(ERROR_COLOR, "Invalid CMF")
+            return
+             
+        }
+        printToConsole(INFO_COLOR, "CMF: 0x"+CMF:toString(16))
+        ZlibDone = 0
+        TotalBytes = ZBytes["data", string]:length()
+        
+        This:nextBlock()
+    }
+    
+    function number table:findCode() {
+        local Code = 0
+        local Len = 0
+        while(Len<16) {
+            Code = Code*2+ ZBytes:readBits(1)
+            Len++
+            local V = Code+2^Len
+            if(This:exists(V)) {
+                return This[V, number]-1    
+            }    
+        }  
+        printColor(ERROR_COLOR, "findCode did not complete "+Len)
+        return 0 
+    }
+    function number table:findDistanceCode() {
+        if(BType==1) {
+            local D = ZBytes:readBitsR(5)
+            local DEB = ZBytes:readBits(DISTANCE_EXTRA_BITS[D+1, number])
+            return DISTANCE_BASE[D+1,number] +DEB               
+        } elseif(BType==2) {
+            local D = DistanceHuffmanLookup:findCode()
+            local DEB = ZBytes:readBits(DISTANCE_EXTRA_BITS[D+1, number])
+            return DISTANCE_BASE[D+1,number] +DEB   
+        }  
+        
+    }
+} elseif(clk("decode_init")) {
+    switch(BType) {
+        case 0, # no compression
+            ZBytes:skipBytes(1) #TODO why does this work
+            local Len = ZBytes:readBytes(2)
+            local NLen = ZBytes:readBytes(2)
+            if((Len^^0xFFFF) != NLen) {
+                printColor(ERROR_COLOR, (Len^^0xFFFF)+" Len does not match NLen"+NLen)   
+            }
+            Decoder["out", string] = Decoder["out", string] + ZBytes:readByteString(Len)
+            Decoder:nextBlock()
+            
+        break
+        case 1, # fixed huffman codes
+            LitLengthHuffmanLookup = FIXED_HUFFMAN_LOOKUP
+            timer("decode", TIMER_DELAY)
+        break
+        case 2, # dynamic huffman codes
+            NLitLength = ZBytes:readBits(5) + 256 # of Literal/Length codes (257 - 286)
+            NDistance = ZBytes:readBits(5) + 1    # of Distance codes (1 - 32)
+            local NCodeLengthCodes = ZBytes:readBits(4) + 4 # of Code Length codes (4 - 19)
+            CodeLengths = array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+            for(I=1, NCodeLengthCodes) {
+                
+                CodeLengths[CODE_LENGTH_CODE_ORDER[I, number]+1, number] = ZBytes:readBits(3)
+            }
+            CodeLengthsHuffmanLookup = genTree(CodeLengths)
+            
+            
+            CodeLengths = array()
+            ZI = 0
+            timer("read_tree", TIMER_DELAY)
+        break
+        
+    }
+
+} elseif(clk("read_tree")) {
+    while(perf(80)) {   
+        local R = CodeLengthsHuffmanLookup:findCode() 
+
+        local V = 0
+        local Count = 0
+        if(R <= 15 & R >= 0){ 
+            Count = 1
+            V = R
+        } elseif(R == 16){
+            V = CodeLengths[CodeLengths:count(), number]
+            Count = 3+ZBytes:readBits(2)
+        } elseif(R==17) {
+            Count = 3 + ZBytes:readBits(3)
+            V = 0
+        } elseif(R==18) {
+            V=0
+            Count = 11 + ZBytes:readBits(7)
+
+        }
+        local A = array()
+        for(I=1, Count) {
+            A:pushNumber(V)     
+        }
+        CodeLengths = CodeLengths:add(A)
+        ZI+=Count
+        if(ZI > NLitLength) {
+            timer("gen_tree", SLOW_TIMER_DELAY)  
+            ZI = 0
+            exit()
+        }
+        
+    }
+    timer("read_tree", TIMER_DELAY)
+    
+       
+
+} elseif(clk("gen_tree")) {
+    LitLengthHuffmanLookup = genTree(CodeLengths)
+    CodeLengths = array()
+    timer("read_tree_distance", TIMER_DELAY) 
+} elseif(clk("read_tree_distance")) {
+    while(perf(80)) {   
+        local R = CodeLengthsHuffmanLookup:findCode()
+        local V = 0
+        local Count = 0
+        if(R <= 15 & R >= 0){ 
+            Count = 1
+            V = R
+        } elseif(R == 16){
+            V = CodeLengths[CodeLengths:count(), number]
+            Count = 3+ZBytes:readBits(2)
+        } elseif(R==17) {
+            Count = 3 + ZBytes:readBits(3)
+            V = 0
+        } elseif(R==18) {
+            V=0
+            Count = 11 + ZBytes:readBits(7)
+
+        }
+        local A = array()
+        for(I=1, Count) {
+            A:pushNumber(V)     
+        }
+        CodeLengths = CodeLengths:add(A)
+        ZI+=Count
+        if(ZI > NDistance-1) { #TODO why does subtracting one work?
+            timer("gen_tree_distance", SLOW_TIMER_DELAY)  
+            exit()
+        }
+        
+    }
+    timer("read_tree_distance", TIMER_DELAY) 
+
+} elseif(clk("gen_tree_distance")) {
+    DistanceHuffmanLookup = genTree(CodeLengths)
+    CodeLengths = array()
+    timer("decode", TIMER_DELAY) 
+
+} elseif(clk("decode")) {
+    while(perf(90)) {
+        local Value = LitLengthHuffmanLookup:findCode()
+        if(Value < 256) {
+            Decoder["out", string] = Decoder["out", string] + toChar(Value)
+        } elseif(Value == 256) {
+            Decoder:nextBlock()
+            exit()
+        } elseif(Value>256 & Value<=285) {
+            #TODO maybe redo this
+            local Length = LENGTH_BASE[Value-256,number]
+            local ExtraBits = ZBytes:readBits(LENGTH_EXTRA_BITS[Value-256, number])
+            local Length = Length + ExtraBits
+            local Distance = Decoder:findDistanceCode()
+            
+            local Chars = ""
+            
+            if(Distance >=Length) {
+                Chars = Decoder["out", string]:sub(-Distance, -Distance+Length-1)
+            } else {
+                local C = Decoder["out", string]:sub(-Distance,-Distance+min(Length, Distance)-1)
+                
+                Chars += C
+                Length-=Distance
+                while(1) {     
+                    Chars += C:sub(-Distance, -Distance+min(Length, C:length())-1)  
+                    Length-=C:length()
+                    if(Length<=0) {
+                        break
+                                
+                    }
+                }
+                
+                
+            }
+            Decoder["out", string] = Decoder["out", string]+  Chars
+            
+        }
+        
+    }
+    timer("decode", TIMER_DELAY)
+}
+if(!ZlibDone) {
+    progress()
+}

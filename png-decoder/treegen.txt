@@ -1,0 +1,35 @@
+
+if(first()) {
+    function table genTree(CodeLengths:array) {
+        local B1_count = table()
+
+        B1_count[0, number] = 0
+        local Max_bits = 0
+        foreach(K,N:number=CodeLengths) {
+            if(N==0) {
+                continue   
+            }
+            B1_count[N, number] = B1_count[N, number] +1
+            Max_bits = max(Max_bits, N)
+        }
+        
+        local Code = 0
+        local Next_code = table()
+        for(Bits=1, Max_bits) {
+            Code = (Code + B1_count[Bits-1, number]) << 1
+            Next_code[Bits, number] = Code   
+        }
+        
+        local LookupTable = table()
+        Max_code = CodeLengths:count()
+        for(N=1, Max_code+1) {
+            local Len = CodeLengths[N, number]
+            if(Len!=0) {
+                Code = Next_code[Len, number]
+                Next_code[Len, number] = Next_code[Len, number] +1   
+                LookupTable[Code+2^Len, number] = N
+            }
+        }
+        return LookupTable
+    }
+}     
